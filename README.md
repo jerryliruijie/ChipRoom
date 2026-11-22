@@ -1,6 +1,6 @@
 # 同桌 · ChipRoom
 
-朋友线下发牌，各自在手机上记录筹码。打开 [筹码桌](https://chiproom-table-jrl.bronzybug4.chatgpt.site/) 创建房间，或通过朋友的邀请链接加入。线上版使用云端服务，玩家可以使用不同网络。
+朋友线下发牌，各自在手机上记录筹码。打开 [筹码桌](https://chiproom-table-jrl.jl10124.chatgpt.site/) 创建房间，或通过朋友的邀请链接加入。线上版使用云端服务，玩家可以使用不同网络。
 
 ## 开桌
 
