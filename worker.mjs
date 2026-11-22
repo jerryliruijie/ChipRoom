@@ -20,6 +20,16 @@ function stale() { return new RequestError(409,'牌桌已有更新，请确认�
 
 export default {
   async fetch(request,env) {
+    const origin = 'https://jerryliruijie.github.io';
+    const external = request.headers.get('Origin') === origin;
+    const cors = {'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Max-Age':'600','Vary':'Origin'};
+    if (external && request.method === 'OPTIONS') return new Response(null,{status:204,headers:cors});
+    const response = await handleRequest(request,env);
+    if (external) for (const [key,value] of Object.entries(cors)) response.headers.set(key,value);
+    return response;
+  }
+};
+async function handleRequest(request,env) {
     try {
       const path = new URL(request.url).pathname;
       const route = /^\/api\/rooms(?:\/([A-Z2-9]{6})(?:\/(join|action))?)?$/i.exec(path);
@@ -31,6 +41,17 @@ export default {
       }
       const code = route[1]?.toUpperCase();
       const op = route[2]?.toLowerCase();
+      if (!code && request.method === 'GET') {
+        const query = `SELECT code,
+          (SELECT json_extract(value,'$.name') FROM json_each(room,'$.players')
+           WHERE json_extract(value,'$.id')=json_extract(room,'$.hostId')) AS host,
+          json_array_length(room,'$.players') AS players, json_extract(room,'$.settings.sb') AS sb,
+          json_extract(room,'$.settings.bb') AS bb
+          FROM rooms WHERE json_extract(room,'$.phase')='lobby' AND json_array_length(room,'$.players')<10
+          AND json_extract(room,'$.listedAt')>? ORDER BY json_extract(room,'$.listedAt') DESC`;
+        const {results} = await env.DB.prepare(query).bind(Date.now()-86400000).all();
+        return reply({rooms:results.map(({code,host,players,sb,bb})=>({code,host,players,sb,bb}))});
+      }
       const method = code && !op ? 'GET' : 'POST';
       if (request.method!==method) throw new RequestError(405,'请求方式有误。');
       let body;
@@ -56,6 +77,7 @@ export default {
         const key=await digest(token);
         if (!code) {
           const room=checked(()=>createRoom(id,body.name));
+          room.listedAt=Date.now();
           for(let i=0;i<5;i++) {
             const candidate=makeCode();
             const r=await db.prepare('INSERT OR IGNORE INTO rooms(code,version,room,sessions) VALUES (?,1,?,?)').bind(candidate,JSON.stringify(room),JSON.stringify({[key]:id})).run();
@@ -93,6 +115,5 @@ export default {
       if(!(e instanceof RequestError)) console.error(e);
       return reply({error:e instanceof RequestError?e.message:'服务暂时无法处理请求。'},e instanceof RequestError?e.status:500);
     }
-  }
-};
+}
 

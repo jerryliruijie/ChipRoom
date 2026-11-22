@@ -11,6 +11,7 @@ test('云端房间独立身份、并发入桌和重复扣注保护', async () =>
     const statement = db.prepare(sql);
     return {bind(...args) { return {
       async first() { return statement.get(...args); },
+      async all() { return {results:statement.all(...args)}; },
       async run() { return {meta:statement.run(...args)}; }
     }; }};
   }}};
@@ -22,6 +23,11 @@ test('云端房间独立身份、并发入桌和重复扣注保护', async () =>
   }
   const host=await (await api('',{name:'甲'})).json();
   const path='/'+host.code;
+  const origin='https://jerryliruijie.github.io';
+  const list=()=>handler.fetch(new Request('https://example.test/api/rooms',{headers:{Origin:origin}}),env);
+  const lobby=await list();
+  assert.equal(lobby.headers.get('access-control-allow-origin'),origin);
+  assert.deepEqual((await lobby.json()).rooms,[{code:host.code,host:'甲',players:1,sb:5,bb:10}]);
   const guests=await Promise.all(['乙','丙'].map(async name=> (await api(path+'/join',{name})).json()));
   assert.ok(guests.every(p=>p.token));
   const state=await (await api(path,null,host.token)).json();
@@ -31,6 +37,7 @@ test('云端房间独立身份、并发入桌和重复扣注保护', async () =>
   assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
   const synced=await (await api(path,null,guests[0].token)).json();
   assert.equal(synced.pot,15);
+  assert.deepEqual((await (await list()).json()).rooms,[]);
   assert.equal(synced.me,guests[0].state.me);
   assert.equal((await api(path,null)).status,401);
   db.close();

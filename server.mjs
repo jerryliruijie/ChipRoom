@@ -1,6 +1,6 @@
 import { createServer as httpServer } from 'node:http';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
@@ -82,6 +82,16 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
       if (!route) throw fail(404, '找不到此页面。');
       let code = route[1]?.toUpperCase();
       const operation = route[2]?.toLowerCase();
+      if (!code && request.method === 'GET') {
+        const entries = readdirSync(dataDir).filter(file => /^[A-Z2-9]{6}\.json$/.test(file)).map(file => {
+          const code=file.slice(0,6);
+          return {code,room:load(code).room};
+        }).filter(({room})=>room.phase==='lobby' && room.players.length<10 && room.listedAt>Date.now()-86400000);
+        entries.sort((a,b)=>b.room.listedAt-a.room.listedAt);
+        json(response,200,{rooms:entries.map(({code,room})=>({code,host:room.players.find(p=>p.id===room.hostId).name,
+          players:room.players.length,sb:room.settings.sb,bb:room.settings.bb}))});
+        return;
+      }
       const method = code && !operation ? 'GET' : 'POST';
       if (request.method !== method) throw fail(405, '请求方式有误。');
       const body = method === 'POST' ? await readBody(request) : null;
@@ -100,6 +110,7 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
           do { code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join(''); } while (load(code));
           record = { room: checked(() => createRoom(id, body.name)), sessions: {} };
           record.room.version = 1;
+          record.room.listedAt = Date.now();
         }
         record.sessions[hash(token)] = id;
         save(code, record);

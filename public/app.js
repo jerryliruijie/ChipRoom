@@ -2,7 +2,8 @@
 
 const main = document.querySelector('#main');
 const connection = document.querySelector('#connection');
-const endpoint = '/api/rooms';
+const endpoint = location.origin === 'https://jerryliruijie.github.io'
+  ? 'https://chiproom-table-jrl.jl10124.chatgpt.site/api/rooms' : '/api/rooms';
 const labels = {preflop:'翻牌前', flop:'翻牌圈', turn:'转牌圈', river:'河牌圈'};
 const phases = {lobby:'准备中',betting:'下注中',showdown:'摊牌结算',complete:'本手结束'};
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -47,7 +48,7 @@ async function request(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
   try {
-    const headers = {'Content-Type':'application/json'};
+    const headers = options.body ? {'Content-Type':'application/json'} : {};
     if (options.auth) headers.Authorization = 'Bearer ' + options.auth;
     const response = await fetch(path, {method:options.body ? 'POST' : 'GET', headers, cache:'no-store',
       body: options.body ? JSON.stringify(options.body) : undefined, signal:controller.signal});
@@ -73,16 +74,33 @@ function showEntrance(code = '', message = '') {
   });
   main.querySelector('[name=name]').value = recall('chip-room-nickname');
   main.querySelector('[name=code]').value = code;
+  const directory = document.createElement('section');
+  directory.className = 'panel directory';
+  directory.innerHTML = '<h2>房间大厅</h2><p class="muted" id="room-list">正在查找可加入的牌桌…</p>';
+  main.append(directory);
+  void refreshDirectory();
   changeMode(code ? 'join' : 'create');
   main.querySelector('#entry-error').textContent = message;
 }
+let listing = false;
+async function refreshDirectory() {
+  const list = document.querySelector('#room-list');
+  if (!list || listing || session || document.hidden) return;
+  listing = true;
+  try {
+    const {rooms} = await request(endpoint);
+    list.innerHTML = rooms.length ? rooms.map(r => '<button type="button" class="secondary lobby-room" data-room="'+escape(r.code)+'"><strong>'+escape(r.host)+' 的桌</strong><span>'+escape(r.code)+' · '+num(r.players)+'/10 人 · 盲注 '+num(r.sb)+'/'+num(r.bb)+'</span></button>').join('') : '暂时没有可加入的牌桌，你可以创建第一桌。';
+  } catch { list.textContent = '暂时无法加载房间，稍后会自动重试。'; }
+  finally { listing = false; }
+}
+setInterval(refreshDirectory, 4000);
 function changeMode(newMode) {
   mode = newMode;
   const join = mode === 'join';
   main.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.mode === mode)));
   main.querySelector('#code-field').hidden = !join;
   main.querySelector('[name=code]').required = join;
-  main.querySelector('#entry-note').textContent = join ? '进入后，按现实中的座位顺序入座。' : '创建后把邀请链接发给朋友，即可一起入座。';
+  main.querySelector('#entry-note').textContent = join ? '进入后，按现实中的座位顺序入座。' : '新桌会显示在公开大厅，朋友可以直接选择加入。';
   main.querySelector('#enter').textContent = join ? '加入牌桌' : '创建房间';
   main.querySelector('#entry-error').textContent = '';
 }
@@ -253,6 +271,13 @@ function renderRoom(previous) {
 main.addEventListener('click',async event=>{
   const b=event.target.closest('button');
   if(!b) return;
+  if(b.dataset.room && !busy) {
+    changeMode('join');
+    const form=document.querySelector('#entry-form');
+    form.elements.code.value=b.dataset.room;
+    if (form.elements.name.value.trim()) form.requestSubmit();
+    else form.elements.name.focus();
+  }
   if(b.dataset.mode) changeMode(b.dataset.mode);
   if(b.dataset.act) {
     if(b.dataset.act==='start' && state.phase==='lobby'){
