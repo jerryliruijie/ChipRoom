@@ -11,6 +11,7 @@ const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const assets = new Map([
   ['/', ['index.html', 'text/html']],
   ['/index.html', ['index.html', 'text/html']],
+  ['/chips.webp', ['chips.webp', 'image/webp']],
   ['/app.js', ['app.js', 'application/javascript']],
   ['/style.css', ['style.css', 'text/css']],
 ]);

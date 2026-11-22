@@ -40,9 +40,9 @@ function notify(message) {
   noteTimer = setTimeout(() => { document.querySelector('#toast').textContent = ''; }, 3600);
 }
 function status(online, message) {
-  connection.hidden = !session;
+  connection.hidden = online || !session;
   connection.dataset.online = String(online);
-  connection.textContent = message;
+  connection.textContent = online ? '' : message;
 }
 async function request(path, options = {}) {
   const controller = new AbortController();
@@ -67,17 +67,8 @@ async function request(path, options = {}) {
 function showEntrance(code = '', message = '') {
   session = null; state = null; connection.hidden = true;
   main.replaceChildren(document.querySelector('#home').content.cloneNode(true));
-  [...main.querySelectorAll('.stack')].forEach((stack, i) => {
-    for (let j=0; j<[6,8,4,2][i]; j++) {
-      const disc = document.createElement('i'); disc.className='disc'; disc.style.setProperty('--i',j); stack.append(disc);
-    }
-  });
   main.querySelector('[name=name]').value = recall('chip-room-nickname');
   main.querySelector('[name=code]').value = code;
-  const directory = document.createElement('section');
-  directory.className = 'panel directory';
-  directory.innerHTML = '<h2>房间大厅</h2><p class="muted" id="room-list">正在查找可加入的牌桌…</p>';
-  main.append(directory);
   void refreshDirectory();
   changeMode(code ? 'join' : 'create');
   main.querySelector('#entry-error').textContent = message;
@@ -89,8 +80,11 @@ async function refreshDirectory() {
   listing = true;
   try {
     const {rooms} = await request(endpoint);
-    list.innerHTML = rooms.length ? rooms.map(r => '<button type="button" class="secondary lobby-room" data-room="'+escape(r.code)+'"><strong>'+escape(r.host)+' 的桌</strong><span>'+escape(r.code)+' · '+num(r.players)+'/10 人 · 盲注 '+num(r.sb)+'/'+num(r.bb)+'</span></button>').join('') : '暂时没有可加入的牌桌，你可以创建第一桌。';
-  } catch { list.textContent = '暂时无法加载房间，稍后会自动重试。'; }
+    const signature=JSON.stringify(rooms);
+    if (list.dataset.rooms===signature) return;
+    list.dataset.rooms=signature;
+    list.innerHTML = rooms.length ? rooms.map(r => '<button type="button" class="secondary lobby-room" data-room="'+escape(r.code)+'"><strong>'+escape(r.host)+' 的桌</strong><span>'+escape(r.code)+' · '+num(r.players)+'/10 人 · 盲注 '+num(r.sb)+'/'+num(r.bb)+'</span></button>').join('') : '暂无等待入座的牌桌';
+  } catch { delete list.dataset.rooms; list.textContent = '暂时无法加载房间，稍后会自动重试。'; }
   finally { listing = false; }
 }
 setInterval(refreshDirectory, 4000);
@@ -100,7 +94,6 @@ function changeMode(newMode) {
   main.querySelectorAll('[data-mode]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.mode === mode)));
   main.querySelector('#code-field').hidden = !join;
   main.querySelector('[name=code]').required = join;
-  main.querySelector('#entry-note').textContent = join ? '进入后，按现实中的座位顺序入座。' : '新桌会显示在公开大厅，朋友可以直接选择加入。';
   main.querySelector('#enter').textContent = join ? '加入牌桌' : '创建房间';
   main.querySelector('#entry-error').textContent = '';
 }
@@ -120,6 +113,7 @@ async function enter(form) {
   busy=true;
   const selectedMode=mode;
   form.querySelector('button').disabled=true;
+  form.querySelector('button').textContent=selectedMode==='create'?'正在建桌…':'正在入座…';
   main.querySelectorAll('[data-mode]').forEach(button => button.disabled=true);
   try {
     const saved = selectedMode === 'join' && readSaved(code);
@@ -133,10 +127,10 @@ async function enter(form) {
     const data = await request(url,{body:{name}});
     saveIdentity(data.code,data.token); remember('chip-room-nickname',name); update(data.state);
   } catch(error) { errorLine.textContent=error.message; }
-  finally { busy=false; if (!session) { form.querySelector('button').disabled=false;main.querySelectorAll('[data-mode]').forEach(button=>button.disabled=false); } }
+  finally { busy=false; if (!session) { form.querySelector('button').disabled=false;form.querySelector('button').textContent=selectedMode==='create'?'创建房间':'加入牌桌';main.querySelectorAll('[data-mode]').forEach(button=>button.disabled=false); } }
 }
 function update(next) {
-  status(true,'已同步');
+  status(true,'');
   if (state && state.version >= next.version) return;
   const previous = state;
   state = next;
@@ -193,7 +187,7 @@ function table() {
     const [x,y]=seatPosition(i,n,false), [mx,my]=seatPosition(i,n,true);
     const folded=!lobby && (p.folded || !p.inHand);
     const tag=folded ? (p.folded?'已弃牌':'未入局') : !lobby && p.stack===0 ? '全下' : playerTags(p);
-    return '<div class="seat '+(p.id===state.me?'mine ':'')+(p.id===state.turn?'current ':'')+(folded?'dim':'')+'" style="--x:'+x+'%;--y:'+y+'%;--mx:'+mx+'%;--my:'+my+'%"><b>'+escape(p.name)+'</b><strong>'+num(lobby?state.settings.stack:p.stack)+'</strong><small>'+escape([i+1+'号',tag].filter(Boolean).join(' · '))+'</small></div>';
+    return '<div class="seat '+(p.id===state.me?'mine ':'')+(p.id===state.turn?'current ':'')+(folded?'dim':'')+'" style="--x:'+x+'%;--y:'+y+'%;--mx:'+mx+'%;--my:'+my+'%"><b>'+escape(p.name)+'</b><strong>'+num(lobby?state.settings.stack:p.stack)+'</strong><small>'+escape([p.id===state.me?'我':i+1+'号',tag].filter(Boolean).join(' · '))+'</small></div>';
   }).join('');
   const center=lobby?'<small>已入座</small><strong>'+n+' 人</strong>':'<small>底池</small><strong>'+num(state.pot)+'</strong>';
   return '<section class="felt" aria-label="座位与筹码"><div class="seats" style="--h:'+Math.max(268,n*36)+'px;--mh:'+Math.max(240,n*45)+'px"><div class="pot">'+center+'</div>'+seats+'</div><div class="meta"><span>'+escape(lobby?'等待开局':labels[state.street]||'本手结束')+'</span><span>小盲 / 大盲　'+num(state.settings.sb)+' / '+num(state.settings.bb)+'</span></div></section>';
@@ -214,7 +208,7 @@ function playerList() {
 }
 function settings() {
   const cfg=state.settings;
-  if (!isHost()) return '<section class="panel"><h2>牌桌设置</h2><p>初始筹码　<strong>'+num(cfg.stack)+'</strong></p><p class="muted">房主设置盲注与初始筹码，所有人入座后开局。</p></section>';
+  if (!isHost()) return '<section class="panel"><h2>牌桌设置</h2><p>初始筹码　<strong>'+num(cfg.stack)+'</strong></p></section>';
   const fields=[['stack','初始筹码'],['sb','小盲'],['bb','大盲']].map(([key,label])=>'<label>'+label+'<input name="'+key+'" type="number" min="1" step="1" required value="'+escape(cfg[key])+'"></label>').join('');
   return '<section class="panel"><h2>牌桌设置</h2><form id="settings"><div class="fields">'+fields+'</div><button class="secondary">保存设置</button></form></section>';
 }
@@ -225,7 +219,7 @@ function turnPanel() {
   let raise='';
   if(actions.raise) {
     const min=actions.minRaiseTo,max=actions.maxRaiseTo;
-    raise='<form class="raise" id="raise"><label for="raise-to">加注到（本轮总额）</label><div class="row"><input type="number" inputmode="numeric" step="1" id="raise-to" name="to" required min="'+min+'" max="'+max+'" value="'+min+'"><button class="secondary">确认加注</button></div><p class="muted">可选 '+num(min)+' 至 '+num(max)+'</p></form>';
+    raise='<form class="raise" id="raise"><label for="raise-to">加注到（本轮总额）</label><div class="row"><input type="number" inputmode="numeric" step="1" id="raise-to" name="to" required min="'+min+'" max="'+max+'" value="'+min+'"><button class="secondary">确认加注</button></div><input class="raise-slider" aria-label="调整加注总额" type="range" min="'+min+'" max="'+max+'" value="'+min+'"><div class="limits"><span>'+num(min)+'</span><span>'+num(max)+'</span></div></form>';
   }
   const choices=[actions.fold?btn('fold','弃牌','danger'):'',actions.check?btn('check','过牌','primary'):'',actions.call>0?btn('call','跟注 '+num(actions.call),'primary'):''].join('');
   return '<section class="panel"><h2>轮到你行动</h2><div class="actions">'+choices+'</div>'+raise+'</section>';
@@ -244,7 +238,7 @@ function controls() {
   const lobby=state.phase==='lobby';
   const count=lobby?state.players.length:state.players.filter(p=>p.stack>0).length;
   const title=lobby?'准备开局':'本手结束';
-  const hint=lobby?'按现实座位顺时针排列；至少两人入座即可开始。':count<2?'仅剩一位玩家持有筹码，本桌已结束。':'下一手将轮换庄位并自动下盲注。';
+  const hint=lobby?''+(count<2?'等待另一位玩家入座':'按现场顺时针顺序入座')+'':count<2?'仅剩一位玩家持有筹码，本桌已结束。':'下一手将轮换庄位并自动下盲注。';
   const start=isHost()&&count>=2?'<button class="primary" data-act="start">'+(lobby?'开始第一手':'开始下一手')+'</button>':'';
   return '<section class="panel"><h2>'+title+'</h2><p class="muted">'+hint+'</p>'+start+'</section>';
 }
@@ -267,6 +261,8 @@ function renderRoom(previous) {
     }
     if(focus && el.name===focus && el.type!=='checkbox') el.focus({preventScroll:true});
   });
+  const slider=main.querySelector('.raise-slider');
+  if(slider) {slider.value=main.querySelector('#raise-to').value; paintRaise(slider);}
 }
 main.addEventListener('click',async event=>{
   const b=event.target.closest('button');
@@ -292,6 +288,19 @@ main.addEventListener('click',async event=>{
     catch {window.prompt('复制邀请链接',url);}
   }
   if(b.hasAttribute('data-home')&&!busy) {history.replaceState(null,'',roomUrl(''));showEntrance();}
+});
+function paintRaise(slider) {
+  const span=Number(slider.max)-Number(slider.min);
+  const percent=span?(Number(slider.value)-Number(slider.min))*100/span:100;
+  slider.style.setProperty('--progress',percent+'%');
+}
+main.addEventListener('input',event=>{
+  const form=event.target.closest('#raise');
+  if(!form) return;
+  const slider=form.querySelector('.raise-slider'), amount=form.elements.to;
+  if(event.target===slider) amount.value=slider.value;
+  else if(amount.validity.valid) slider.value=amount.value;
+  paintRaise(slider);
 });
 main.addEventListener('change',event=>{if(event.target.id==='seat') void act({type:'seat',index:Number(event.target.value)});});
 main.addEventListener('submit',event=>{

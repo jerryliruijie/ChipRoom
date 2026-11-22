@@ -1,2 +1,17 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#163f34"><title>同桌 · 德州筹码桌</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head><body><header><div class="head"><div class="brand"><i aria-hidden="true">♣</i>同桌 <span>CHIP ROOM</span></div><small id="connection" role="status" hidden></small></div></header><main id="main"></main><div id="toast" role="status"></div>
-<template id="home"><section class="home"><div class="hero"><div class="rail" aria-hidden="true"></div><div class="hero-copy"><h1>德州筹码桌</h1><p>朋友围桌发牌，手机同步记下每一注。</p></div><div class="scene" aria-hidden="true"><div class="stack a"></div><div class="stack b"></div><div class="stack c"></div><div class="stack d"></div></div></div><div class="panel entrance"><h2>进入牌桌</h2><div class="switch" aria-label="入桌方式"><button data-mode="create">创建房间</button><button data-mode="join">加入房间</button></div><form id="entry-form"><label>你的昵称<input name="name" autocomplete="nickname" maxlength="20" required placeholder="朋友们怎么称呼你？"></label><label id="code-field">房间码<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="输入房主分享的房间码"></label><p class="muted" id="entry-note"></p><button class="primary" id="enter"></button><p class="error" id="entry-error" role="alert"></p></form></div></section></template></body></html>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f5f9"><title>同桌 · 筹码桌</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
+<body>
+<header><div class="head"><div class="brand"><i aria-hidden="true"></i>同桌 <span>Chip Room</span></div><small id="connection" role="status" hidden></small></div></header>
+<main id="main"></main><div id="toast" role="status"></div>
+<template id="home">
+<section class="home">
+  <div class="lobby-main"><div class="hero"><h1>牌桌大厅</h1></div>
+    <section class="panel directory"><h2>可加入的牌桌</h2><div id="room-list" class="muted">正在查找牌桌…</div></section>
+  </div>
+  <section class="panel entrance"><h2>入座</h2>
+    <div class="switch" aria-label="入桌方式"><button data-mode="create">创建房间</button><button data-mode="join">凭码加入</button></div>
+    <form id="entry-form"><label>昵称<input name="name" autocomplete="nickname" maxlength="20" required placeholder="输入你的昵称"></label>
+    <label id="code-field">房间码<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="输入房间码"></label>
+    <button class="primary" id="enter"></button><p class="error" id="entry-error" role="alert"></p></form>
+  </section>
+</section></template></body></html>
