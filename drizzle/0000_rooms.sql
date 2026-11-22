@@ -1,0 +1,6 @@
+CREATE TABLE rooms (
+  code TEXT PRIMARY KEY NOT NULL,
+  version INTEGER NOT NULL,
+  room TEXT NOT NULL,
+  sessions TEXT NOT NULL
+);
