@@ -1,17 +1,126 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#f6f5f9"><title>同桌 · 筹码桌</title><link rel="stylesheet" href="./style.css"><script src="./app.js" defer></script></head>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+  <meta name="theme-color" content="#0c1c1a">
+  <title>同桌 · 筹码记录</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
 <body>
-<header><div class="head"><div class="brand"><i aria-hidden="true"></i>同桌 <span>Chip Room</span></div><small id="connection" role="status" hidden></small></div></header>
-<main id="main"></main><div id="toast" role="status"></div>
-<template id="home">
-<section class="home">
-  <div class="lobby-main"><div class="hero"><h1>牌桌大厅</h1></div>
-    <section class="panel directory"><h2>可加入的牌桌</h2><div id="room-list" class="muted">正在查找牌桌…</div></section>
-  </div>
-  <section class="panel entrance"><h2>入座</h2>
-    <div class="switch" aria-label="入桌方式"><button data-mode="create">创建房间</button><button data-mode="join">凭码加入</button></div>
-    <form id="entry-form"><label>昵称<input name="name" autocomplete="nickname" maxlength="20" required placeholder="输入你的昵称"></label>
-    <label id="code-field">房间码<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="输入房间码"></label>
-    <button class="primary" id="enter"></button><p class="error" id="entry-error" role="alert"></p></form>
-  </section>
-</section></template></body></html>
+  <header class="topbar">
+    <div class="wrap nav">
+      <div class="brand"><i aria-hidden="true" class="chip-mark"></i><strong>同桌</strong><span lang="en">Chip Room</span></div>
+      <div class="nav-actions">
+        <span id="connection" role="status" hidden></span>
+        <button class="quiet" id="lobby-link" hidden>返回大厅</button>
+        <button class="outline compact" id="nav-action">凭码加入</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap" id="main"></main>
+  <div id="toast" role="status"></div>
+
+  <template id="lobby-template">
+    <section class="lobby">
+      <div class="masthead">
+        <div class="mast-copy"><h1>牌桌大厅</h1>
+          <div class="mast-actions">
+            <button class="primary create-room" data-open="create"><i class="plus" aria-hidden="true"></i>创建房间</button>
+            <button class="outline" data-open="practice"><i class="practice-chip" aria-hidden="true"></i>体验跟注</button>
+          </div>
+        </div>
+        <div class="mast-art" aria-hidden="true"><div class="engraving"></div><div class="jewel"><img src="./chips.webp" alt="" decoding="async"></div></div>
+      </div>
+      <section class="directory" aria-labelledby="rooms-title">
+        <div class="section-heading"><h2 id="rooms-title">开放牌桌 <span class="count" id="room-count">—</span></h2>
+          <button class="quiet refresh" id="refresh"><i aria-hidden="true">⟳</i>刷新</button></div>
+        <div class="room-columns" aria-hidden="true"><span>房主</span><span>房间码</span><span>入座</span><span>小盲 / 大盲</span><span></span></div>
+        <div id="room-list"></div><p id="list-message" class="empty" role="status">正在查找牌桌…</p>
+      </section>
+    </section>
+  </template>
+  <template id="room-row-template">
+    <button type="button" class="room-row">
+      <span class="host-cell"><i class="room-mark" aria-hidden="true"></i><strong></strong></span>
+      <span class="room-code digits"></span><span class="occupancy"><i aria-hidden="true"></i><span class="digits"></span></span>
+      <span class="blinds digits"></span><span class="join-label">入座</span>
+    </button>
+  </template>
+  <dialog id="entry-dialog" aria-labelledby="entry-title">
+    <div class="sheet-heading"><h2 id="entry-title"></h2><button class="icon-button" id="close-entry" aria-label="关闭">×</button></div>
+    <p class="entry-context" id="entry-context" hidden></p>
+    <form id="entry-form">
+      <label>昵称<input name="name" autocomplete="nickname" maxlength="20" required placeholder="输入你的昵称"></label>
+      <label id="code-field">房间码<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="6 位房间码"></label>
+      <p id="entry-error" class="error" role="alert"></p>
+      <button id="enter" class="primary wide"></button>
+    </form>
+  </dialog>
+
+  <template id="table-template">
+    <div class="table-page">
+      <div class="table-title">
+        <div class="table-identity"><h1 id="table-title"></h1><span id="stage-label"></span></div>
+        <div class="table-meta"><span class="code-plate digits" id="table-code"></span><div class="blind-line">盲注 <b id="blind-amount" class="digits"></b></div></div>
+      </div>
+      <div class="workspace">
+        <div class="desk-column">
+          <section class="surface" aria-label="牌桌与筹码">
+            <div class="arena">
+              <div class="cloth" aria-hidden="true"></div>
+              <div id="scene-layer" aria-hidden="true"></div>
+              <div class="fallback-props" aria-hidden="true"></div>
+              <div class="fallback-pot" aria-hidden="true" hidden></div>
+              <div id="wager-labels" class="digits"></div>
+              <div class="pot"><span id="pot-label"></span><strong class="digits" id="pot-value"></strong></div>
+              <div id="seats"></div>
+            </div>
+          </section>
+          <section id="console" class="console" aria-label="牌桌操作">
+            <div class="console-head"><h2 id="action-title"></h2><span id="action-info"></span></div>
+            <div id="preparation"><p id="ready-note"></p><button id="start" data-act="start" class="primary"></button></div>
+            <button id="practice-again" class="primary" hidden>再试一次</button>
+            <div id="betting" hidden>
+              <div id="bet-buttons" class="action-row">
+                <button data-act="fold" class="fold">弃牌</button><button id="match" class="primary"></button>
+                <button id="raise-open" class="gold-outline" aria-controls="raise" aria-expanded="false">加注</button>
+              </div>
+              <form id="raise" hidden>
+                <div class="amount-line"><label for="raise-to">加注到<span>本轮总额</span></label>
+                  <input id="raise-to" name="to" type="number" inputmode="numeric" step="1" required></div>
+                <input class="raise-slider" type="range" aria-label="调整加注总额" step="1">
+                <div class="limits digits"><span></span><span></span></div>
+                <div class="raise-buttons"><button type="button" class="outline" id="raise-cancel">取消</button><button class="primary" id="raise-confirm">确认加注</button></div>
+              </form>
+            </div>
+            <form id="award" hidden><div id="award-pots"></div><button class="primary">确认分配</button></form>
+          </section>
+        </div>
+        <aside class="sidebar">
+          <details id="config-section"><summary>牌桌设置</summary>
+            <div class="detail-body"><form id="settings">
+              <div class="fields"><label>初始筹码<input name="stack" type="number" inputmode="numeric" min="1" step="1" required></label>
+              <label>小盲<input name="sb" type="number" inputmode="numeric" min="1" step="1" required></label>
+              <label>大盲<input name="bb" type="number" inputmode="numeric" min="1" step="1" required></label></div>
+              <button class="outline">保存设置</button></form><p id="read-settings" hidden></p></div>
+          </details>
+          <details id="roster-section"><summary>座位顺序 <span id="seat-count" class="digits"></span></summary>
+            <div class="detail-body"><label id="seat-picker">我的座位<select id="seat"></select></label><ol id="roster"></ol></div>
+          </details>
+          <details id="history-section"><summary>牌桌记录</summary><div class="detail-body"><ol id="logs"></ol></div></details>
+        </aside>
+      </div>
+    </div>
+  </template>
+  <template id="seat-template">
+    <div class="seat">
+      <div class="seat-top"><span class="dealer" aria-label="庄位" hidden>D</span><b class="player-name"></b><span class="role"></span></div>
+      <strong class="stack digits"></strong>
+      <div class="seat-foot"><span class="bet digits"><span class="bet-label"></span> <span class="bet-value"></span></span></div>
+      <span class="turn-tag" hidden><i aria-hidden="true"></i>行动中</span>
+    </div>
+  </template>
+</body>
+</html>

@@ -5,16 +5,11 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { createRoom, apply, view } from './engine.mjs';
+import { publicFiles } from './scripts/public-files.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-const assets = new Map([
-  ['/', ['index.html', 'text/html']],
-  ['/index.html', ['index.html', 'text/html']],
-  ['/chips.webp', ['chips.webp', 'image/webp']],
-  ['/app.js', ['app.js', 'application/javascript']],
-  ['/style.css', ['style.css', 'text/css']],
-]);
+const assets = publicFiles(join(root, 'public'));
 const hash = token => createHash('sha256').update(token).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });
 
@@ -72,10 +67,11 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
     response.setHeader('x-content-type-options', 'nosniff');
     try {
       const path = new URL(request.url, 'http://localhost').pathname;
-      const asset = assets.get(path);
+      const asset = assets.get(path === '/' ? '/index.html' : path);
       if (asset && ['GET', 'HEAD'].includes(request.method)) {
-        const data = readFileSync(join(root, 'public', asset[0]));
-        response.writeHead(200, { 'content-type': asset[1] + '; charset=utf-8', 'cache-control': 'no-cache' });
+        const data = readFileSync(join(root, 'public', asset.path));
+        const charset = asset.mime.startsWith('text/') ? '; charset=utf-8' : '';
+        response.writeHead(200, { 'content-type': asset.mime + charset, 'cache-control': 'no-cache' });
         response.end(request.method === 'HEAD' ? undefined : data);
         return;
       }

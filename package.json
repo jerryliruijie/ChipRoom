@@ -6,9 +6,13 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "vendor:three": "node scripts/vendor-three.mjs"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "three": "0.183.2"
   }
 }
