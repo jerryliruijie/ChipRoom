@@ -1,6 +1,6 @@
 import { mountLobbyArt, num, reconcile, reducedMotion, template, text } from './ui.js';
 import { mountTable } from './room.js';
-import { openPractice, practiceCall } from './practice.js';
+import { createPractice, scenarios } from './practice.js';
 
 const main = document.getElementById('main');
 const connection = document.getElementById('connection');
@@ -11,7 +11,7 @@ const entryForm = document.getElementById('entry-form');
 const endpoint = location.origin === 'https://jerryliruijie.github.io'
   ? 'https://chiproom-table-jrl.jl10124.chatgpt.site/api/rooms' : '/api/rooms';
 
-let session, state, table, entry, transitionOrigin, noticeTimer;
+let session, state, table, entry, transitionOrigin, noticeTimer, practice;
 let busy = false, syncing = false, listing = false;
 let directory = new Map();
 const cleanCode = value => value.trim().toUpperCase();
@@ -62,7 +62,7 @@ async function request(path, {auth, body} = {}) {
 function showLobby() {
   if (dialog.open) dialog.close();
   table?.destroy();
-  table = state = session = transitionOrigin = null;
+  table = state = session = transitionOrigin = practice = null;
   directory = new Map();
   connection.hidden = homeLink.hidden = true;
   navAction.hidden = false;
@@ -133,12 +133,17 @@ function enterTable(identity, snapshot) {
   history.replaceState(null,'',locationFor(identity.code));
   update(snapshot);
 }
-function enterPractice() {
-  if (busy || session) return;
+function enterPractice(scenario = 'call') {
+  if (busy || session || !Object.hasOwn(scenarios,scenario)) return;
+  practice = createPractice(scenario,(state?.version || 0)+1);
   const url = locationFor();
-  url.searchParams.set('practice','call');
+  url.searchParams.set('practice',scenario);
   history.replaceState(null,'',url);
-  update(openPractice());
+  document.title = scenarios[scenario]+' · 同桌';
+  if (table && state?.practice) {
+    state = practice.state;
+    table.update(state,null);
+  } else update(practice.state);
 }
 async function submitEntry(event) {
   event.preventDefault();
@@ -170,7 +175,10 @@ async function submitEntry(event) {
 }
 function update(next) {
   connection.hidden = true;
-  if (state && next.version <= state.version) return;
+  if (state && next.version <= state.version) {
+    if (next.version === state.version) table?.confirmFeedbackSnapshot(next);
+    return;
+  }
   const previous = state;
   state = next;
   if (!table) {
@@ -178,7 +186,7 @@ function update(next) {
     const practice = next.practice === true;
     text(navAction,practice ? '创建房间' : '复制邀请');
     table = mountTable(main,practice ? '体验桌' : session.code,act,notify);
-    document.title = (practice ? '跟注体验' : '房间 ' + session.code) + ' · 同桌';
+    document.title = (practice ? scenarios[next.scenario] : '房间 ' + session.code) + ' · 同桌';
     window.scrollTo(0,0);
     const plate = document.getElementById('table-code');
     if (transitionOrigin && !reducedMotion()) {
@@ -203,6 +211,7 @@ async function sync() {
       showLobby();
       openEntry('join',current.code,error.message);
     } else {
+      table?.interruptFeedback();
       text(connection,'正在重连');
       connection.hidden = false;
     }
@@ -210,7 +219,8 @@ async function sync() {
 }
 async function act(cmd) {
   if (state?.practice) {
-    if (cmd.type === 'call') update(practiceCall(state));
+    try { update(practice.play(cmd)); }
+    catch (error) { notify(error.message); }
     return;
   }
   if (!session || !state || busy) return;
@@ -255,10 +265,8 @@ main.addEventListener('click',event=>{
   if (button.dataset.room) openEntry('join',button.dataset.room,'',button);
   if (button.dataset.open === 'create') openEntry('create','','',button);
   if (button.dataset.open === 'practice') enterPractice();
-  if (button.id === 'practice-again' && state?.practiceDone) {
-    state = openPractice(state.version+1);
-    table.update(state,null);
-  }
+  if (button.id === 'practice-again' && state?.practiceDone) enterPractice(state.scenario);
+  if (button.dataset.scenario && state?.practiceDone) enterPractice(button.dataset.scenario);
   if (button.id === 'refresh') void refreshDirectory();
 });
 entryForm.addEventListener('submit',submitEntry);
@@ -266,6 +274,7 @@ document.getElementById('close-entry').addEventListener('click',()=>{ if (!busy)
 dialog.addEventListener('cancel',event=>{ if (busy) event.preventDefault(); });
 
 const initialCode = cleanCode(new URL(location.href).searchParams.get('room') || '');
+const initialScenario = new URL(location.href).searchParams.get('practice');
 const saved = initialCode && savedSession(initialCode);
 if (saved) {
   session = saved;
@@ -273,8 +282,8 @@ if (saved) {
   homeLink.hidden = false;
   navAction.hidden = true;
   void sync();
-} else if (!initialCode && new URL(location.href).searchParams.get('practice') === 'call') {
-  enterPractice();
+} else if (!initialCode && Object.hasOwn(scenarios,initialScenario)) {
+  enterPractice(initialScenario);
 } else {
   showLobby();
   if (initialCode) openEntry('join',initialCode);
@@ -282,5 +291,9 @@ if (saved) {
 setInterval(sync,1000);
 setInterval(refreshDirectory,4000);
 function reconnect() { if (session) void sync(); else void refreshDirectory(); }
+window.addEventListener('offline',()=>table?.interruptFeedback());
 window.addEventListener('online',reconnect);
-document.addEventListener('visibilitychange',reconnect);
+document.addEventListener('visibilitychange',()=>{
+  if (document.hidden) table?.interruptFeedback();
+  else reconnect();
+});

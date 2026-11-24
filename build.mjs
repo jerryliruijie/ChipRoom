@@ -8,7 +8,7 @@ for (const [url, {path, mime}] of publicFiles('public')) {
     : `Uint8Array.from(atob(${JSON.stringify(data.toString('base64'))}), c => c.charCodeAt(0))`;
   entries.push(`${JSON.stringify(url)}:[${JSON.stringify(mime)},${source}]`);
 }
-const engine = await readFile('engine.mjs','utf8');
+const engine = await readFile('public/holdem.js','utf8');
 const handler = (await readFile('worker.mjs','utf8')).replace("import { createRoom, apply, view } from './engine.mjs';", '');
 await mkdir('dist/server',{recursive:true});
 await mkdir('dist/.openai',{recursive:true});

@@ -1,0 +1,16 @@
+Chip Room self-hosts the following SIL Open Font License 1.1 webfonts.
+
+body.woff2 — Noto Sans SC, variable Chinese interface subset
+Upstream: https://github.com/google/fonts/tree/main/ofl/notosanssc
+License: body-OFL.txt
+
+display.woff2 — Noto Serif SC, variable heading and numeral subset
+Upstream: https://github.com/google/fonts/tree/main/ofl/notoserifsc
+License: display-OFL.txt
+
+figures.woff2 — Barlow Semi Condensed SemiBold, Latin and numeric subset
+Upstream: https://github.com/google/fonts/tree/main/ofl/barlowsemicondensed
+License: figures-OFL.txt
+
+The bundled WOFF2 files are text subsets supplied by the Google Fonts CSS2 API.
+Player names may also use the fonts installed on the player's device.

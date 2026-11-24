@@ -1,0 +1,84 @@
+/* Rose enamel and a narrow brass shoulder distinguish a fully committed seat. */
+.seat.is-all-in {
+  border-left-color: #ebacc1;
+  background: linear-gradient(90deg,#382230f2,#30242cce 54%,#17292308);
+}
+.seat.is-all-in .stack { display: inline-block; vertical-align: middle; }
+.all-in-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 4px;
+  border: 1px solid #ce98a5;
+  border-left: 2px solid #f4d09b;
+  border-radius: 2px;
+  background: #563449;
+  color: #ffefe0;
+  vertical-align: middle;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: none;
+}
+.all-in-stamp i { font: 700 9px/1 system-ui,sans-serif; letter-spacing: .045em; color: #f5cda0; }
+.all-in-stamp strong { font: 680 .69rem/1.05 system-ui,sans-serif; }
+.all-in-notice {
+  position: absolute;
+  inset: 5px auto auto 6px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 58px);
+  pointer-events: none;
+  padding: 4px 10px 4px 7px;
+  border-left: 2px solid #edc58a;
+  background: linear-gradient(96deg,#35242eeb,#21392fe8 84%,#20342bca);
+  color: #fff0d6;
+  font-size: .78rem;
+  font-weight: 650;
+  line-height: 1.25;
+  box-shadow: 0 1px #e3bc7b65;
+}
+.all-in-notice i { width: 6px; height: 6px; flex: 0 0 auto; transform: rotate(45deg); background: #eeb5c3; border: 1px solid #efd29f; }
+.all-in-notice span { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.all-in-notice::after {
+  content: ""; position: absolute; inset: auto 0 -1px; height: 1px;
+  transform-origin: left; background: linear-gradient(90deg,#b27689,#ffe5a9,#a3d1ac00);
+}
+.all-in-sound {
+  position: absolute;
+  right: 1px; top: 0;
+  z-index: 4;
+  width: 40px; height: 40px; min-height: 40px;
+  padding: 0; border-radius: 50%; border: 0;
+  color: #b4bcae; background: transparent;
+  display: grid; place-items: center;
+  touch-action: manipulation;
+}
+.all-in-sound:hover,.all-in-sound:focus-visible { background: #152c23da; }
+.all-in-sound[aria-pressed=true] { color: #f0d7a9; }
+.speaker { width: 20px; height: 16px; position: relative; display: block; }
+.speaker::before {
+  content: ""; position: absolute; inset: 1px 5px 1px 1px; background: currentColor;
+  clip-path: polygon(0 34%,33% 34%,76% 5%,76% 95%,33% 65%,0 65%);
+}
+.speaker::after {
+  content: ""; position: absolute; top: 2px; left: 11px; width: 2px; height: 13px;
+  transform: rotate(-38deg); background: currentColor; box-shadow: -1.4px 0 #13241c;
+}
+.all-in-sound[aria-pressed=true] .speaker::after {
+  top: 1px; left: 6px; width: 10px; height: 11px;
+  background: transparent; border: solid currentColor; border-width: 1.5px 1.5px 0 0;
+  border-radius: 0 70% 0 0; transform: rotate(45deg); box-shadow: none;
+}
+@media (prefers-reduced-motion:no-preference) {
+  .all-in-notice:not([hidden]) { animation: all-in-note 190ms ease-out; }
+  .all-in-notice:not([hidden])::after { animation: all-in-edge 530ms ease-out; }
+  @keyframes all-in-note { from {opacity:.38; translate:-5px 0} to {opacity:1; translate:0 0} }
+  @keyframes all-in-edge { from {transform:scaleX(.12)} to {transform:scaleX(1)} }
+}
+@media(max-width:480px) {
+  .all-in-notice { inset-block-start: 2px; max-width: calc(100% - 46px); padding-block: 2px; }
+  .all-in-stamp { gap: 3px; padding-inline: 3px; }
+}

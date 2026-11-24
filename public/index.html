@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="theme-color" content="#0c1c1a">
   <title>同桌 · 筹码记录</title>
+  <link rel="preload" href="./fonts/body.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./all-in.css">
+  <script type="module" src="./controls.js"></script>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
@@ -28,14 +31,14 @@
         <div class="mast-copy"><h1>牌桌大厅</h1>
           <div class="mast-actions">
             <button class="primary create-room" data-open="create"><i class="plus" aria-hidden="true"></i>创建房间</button>
-            <button class="outline" data-open="practice"><i class="practice-chip" aria-hidden="true"></i>体验跟注</button>
+            <button class="outline" data-open="practice"><i class="practice-chip" aria-hidden="true"></i>体验牌桌</button>
           </div>
         </div>
         <div class="mast-art" aria-hidden="true"><div class="engraving"></div><div class="jewel"><img src="./chips.webp" alt="" decoding="async"></div></div>
       </div>
       <section class="directory" aria-labelledby="rooms-title">
         <div class="section-heading"><h2 id="rooms-title">开放牌桌 <span class="count" id="room-count">—</span></h2>
-          <button class="quiet refresh" id="refresh"><i aria-hidden="true">⟳</i>刷新</button></div>
+          <button class="quiet refresh" id="refresh">刷新</button></div>
         <div class="room-columns" aria-hidden="true"><span>房主</span><span>房间码</span><span>入座</span><span>小盲 / 大盲</span><span></span></div>
         <div id="room-list"></div><p id="list-message" class="empty" role="status">正在查找牌桌…</p>
       </section>
@@ -81,15 +84,27 @@
           <section id="console" class="console" aria-label="牌桌操作">
             <div class="console-head"><h2 id="action-title"></h2><span id="action-info"></span></div>
             <div id="preparation"><p id="ready-note"></p><button id="start" data-act="start" class="primary"></button></div>
-            <button id="practice-again" class="primary" hidden>再试一次</button>
+            <div class="practice-replay">
+              <button id="practice-again" class="primary" hidden>再试一次</button>
+              <div id="practice-alternates" hidden>
+                <button type="button" class="scenario" data-scenario="call">面对盲注</button>
+                <button type="button" class="scenario" data-scenario="check">前位过牌</button>
+                <button type="button" class="scenario" data-scenario="allin">短码全下</button>
+              </div>
+            </div>
             <div id="betting" hidden>
               <div id="bet-buttons" class="action-row">
                 <button data-act="fold" class="fold">弃牌</button><button id="match" class="primary"></button>
                 <button id="raise-open" class="gold-outline" aria-controls="raise" aria-expanded="false">加注</button>
               </div>
               <form id="raise" hidden>
-                <div class="amount-line"><label for="raise-to">加注到<span>本轮总额</span></label>
-                  <input id="raise-to" name="to" type="number" inputmode="numeric" step="1" required></div>
+                <div class="amount-line"><label for="raise-to"><span data-wager-label>加注到</span><small>本轮总额</small></label>
+                  <button type="button" id="raise-max" class="max-key">全下</button></div>
+                <div class="stepper">
+                  <button type="button" class="step-key" data-step="down" aria-label="减少一个筹码">−</button>
+                  <input id="raise-to" name="to" type="number" inputmode="numeric" step="1" required>
+                  <button type="button" class="step-key" data-step="up" aria-label="增加一个筹码">+</button>
+                </div>
                 <input class="raise-slider" type="range" aria-label="调整加注总额" step="1">
                 <div class="limits digits"><span></span><span></span></div>
                 <div class="raise-buttons"><button type="button" class="outline" id="raise-cancel">取消</button><button class="primary" id="raise-confirm">确认加注</button></div>

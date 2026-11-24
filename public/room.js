@@ -1,4 +1,5 @@
 import { seatPoint } from './seat-layout.js';
+import { committedAllIn, markAllInSeat, mountAllInFeedback } from './all-in.js';
 import { num, reconcile, reducedMotion, template, text } from './ui.js';
 
 const streets = {preflop:'翻牌前',flop:'翻牌圈',turn:'转牌圈',river:'河牌圈'};
@@ -28,6 +29,7 @@ export function mountTable(main,code,act,notify) {
   main.replaceChildren(root);
   const $ = selector => root.querySelector(selector);
   const seatList = $('#seats'), roster = $('#roster'), arena = $('.arena');
+  const allInFeedback = mountAllInFeedback(arena,seatList);
   const dock = $('#console'), settings = $('#settings'), raise = $('#raise'), award = $('#award');
   const amountInput = $('#raise-to'), slider = $('.raise-slider'), confirm = $('#raise-confirm');
   let state, pending = false, raiseKey = '';
@@ -123,12 +125,13 @@ export function mountTable(main,code,act,notify) {
       const name = node.querySelector('.player-name');
       text(name,p.name); name.title = p.name;
       amount(node.querySelector('.stack'),p.stack,animate && old.has(p.id));
+      markAllInSeat(node,committedAllIn(state,p));
       const bet = node.querySelector('.bet');
       text(bet.querySelector('.bet-label'),lobby ? '座' : '已下');
       text(bet.querySelector('.bet-value'),lobby ? index+1 : num(p.bet));
       bet.classList.toggle('long-number',p.bet >= 1000000);
       const blind = p.id === state.sbId ? 'SB' : p.id === state.bbId ? 'BB' : '';
-      const condition = p.folded && !lobby ? '弃牌' : !p.inHand && !lobby ? '休息' : !lobby && !p.stack ? '全下' : blind;
+      const condition = p.folded && !lobby ? '弃牌' : !p.inHand && !lobby ? '休息' : blind;
       text(node.querySelector('.role'),[p.id===state.me && p.name!=='你'?'我':'',condition].filter(Boolean).join('·'));
     });
     reconcile(wagers,state.players,p=>p.id,()=>document.createElement('span'),(label,p,index)=>{
@@ -185,7 +188,16 @@ export function mountTable(main,code,act,notify) {
     slider.style.setProperty('--progress',progress+'%');
     const valid = amountInput.validity.valid && amountInput.value !== '';
     confirm.disabled = pending || !valid;
-    text(confirm,valid ? '加注到 '+num(amountInput.valueAsNumber) : '确认加注');
+    for (const step of raise.querySelectorAll('[data-step]')) {
+      const value = amountInput.valueAsNumber;
+      step.disabled = pending || (step.dataset.step === 'down' ? value <= min : value >= max);
+    }
+    const opening = state.actions?.wagerKind === 'bet';
+    const allIn = valid && amountInput.valueAsNumber === max;
+    text(confirm,valid ? (allIn ? '确认全下 ' : opening ? '下注 ' : '加注到 ')+num(amountInput.valueAsNumber)
+      : opening ? '确认下注' : '确认加注');
+    confirm.dataset.allin = String(allIn);
+    $('#raise-max')?.setAttribute('aria-pressed',String(allIn));
   }
   function actions(previous) {
     const {phase,actions:a} = state;
@@ -194,16 +206,29 @@ export function mountTable(main,code,act,notify) {
     $('#preparation').hidden = !preparation;
     $('#betting').hidden = !a;
     $('#practice-again').hidden = !(state.practice && state.practiceDone);
+    if ($('#practice-alternates')) {
+      $('#practice-alternates').hidden = !state.practiceDone;
+      for (const button of root.querySelectorAll('[data-scenario]')) button.hidden = state.scenario === button.dataset.scenario;
+    }
     award.hidden = phase!=='showdown' || !host;
     const key = a ? [state.hand,state.street,state.turn,a.minRaiseTo,a.maxRaiseTo].join('/') : '';
     if (raiseKey !== key || !a?.raise) changeRaise(false);
     if (a) {
       const match=$('#match');
       match.dataset.act = a.check ? 'check' : 'call';
-      text(match,a.check ? '过牌' : '跟注 '+num(a.call));
+      const own = state.players.find(p => p.id === state.me);
+      const callAllIn = a.call > 0 && own.stack === a.call;
+      text(match,a.check ? '过牌' : (callAllIn ? '全下跟注 ' : '跟注 ')+num(a.call));
+      match.dataset.allin = String(callAllIn);
       match.hidden = !a.check && !a.call;
-      $('[data-act="fold"]').hidden = !a.fold;
+      $('[data-act="fold"]').hidden = !a.fold || a.check;
       $('#raise-open').hidden = !a.raise;
+      const opening = a.wagerKind === 'bet' || (a.wagerKind == null && state.street !== 'preflop' && state.players.every(p => !p.bet));
+      const onlyAllIn = a.raise && a.minRaiseTo === a.maxRaiseTo;
+      text($('#raise-open'),onlyAllIn ? '全下' : opening ? '下注' : '加注');
+      $('#raise-open').dataset.allin = String(onlyAllIn);
+      slider.setAttribute('aria-label',opening ? '调整下注金额' : '调整本轮加注总额');
+      if ($('[data-wager-label]')) text($('[data-wager-label]'),opening ? '下注' : '加注到');
       if (a.raise && key !== raiseKey) {
         for (const field of [amountInput,slider]) {
           field.min = a.minRaiseTo;
@@ -229,14 +254,14 @@ export function mountTable(main,code,act,notify) {
       start.hidden = !host || funded<2;
     } else if (phase==='betting') {
       title = a ? '轮到你行动' : '等待 '+(state.players.find(p=>p.id===state.turn)?.name || '')+' 行动';
-      if (a) info = a.call ? '待跟 '+num(a.call) : '可过牌';
+      if (a) info = a.call ? '待跟 '+num(a.toCall ?? a.call) : '可过牌';
     } else {
       title = host ? '分配底池' : '等待房主确认赢家';
       info = '摊牌结算';
       if (host && previous?.phase !== 'showdown') buildPots();
     }
     if (state.practice && state.practiceDone) {
-      title = '已跟注 '+num(state.players.find(p=>p.id===state.me).bet);
+      title = state.practiceCaption;
       info = '底池 '+num(state.pot);
     }
     text($('#action-title'),title); text($('#action-info'),info);
@@ -265,6 +290,9 @@ export function mountTable(main,code,act,notify) {
     if (button.id==='raise-open') {
       changeRaise(true);
       slider.focus({preventScroll:true});
+    } else if (button.id==='raise-max') {
+      amountInput.value = slider.value = slider.max;
+      paint();
     } else if (button.id==='raise-cancel') {
       changeRaise(false);
       $('#raise-open').focus({preventScroll:true});
@@ -313,6 +341,7 @@ export function mountTable(main,code,act,notify) {
       $('.fallback-pot').hidden = lobby || !state.pot;
       amount($('#pot-value'),lobby ? state.players.length : state.pot,successive && !lobby);
       players(previous,successive && !lobby);
+      allInFeedback.update(next,previous);
       configure();
       actions(previous);
       fallbackChips(previous,successive && !lobby);
@@ -326,6 +355,8 @@ export function mountTable(main,code,act,notify) {
       syncLog(logList,state.log,previous?.log || []);
       measure();
     },
+    interruptFeedback: allInFeedback.interrupt,
+    confirmFeedbackSnapshot: allInFeedback.confirm,
     setBusy(value) {
       pending=value;
       for (const button of root.querySelectorAll('button,#seat')) button.disabled=value;
@@ -335,6 +366,7 @@ export function mountTable(main,code,act,notify) {
     },
     destroy() {
       destroyed=true;
+      allInFeedback.destroy();
       clearTimeout(loadDeadline);
       watchScene.disconnect();
       releaseScene();
