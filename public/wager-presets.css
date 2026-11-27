@@ -1,0 +1,33 @@
+.wager-presets {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:5px;
+  margin:8px 0;
+}
+.wager-presets .wager-key {
+  min-height:44px;
+  display:grid;
+  align-content:center;
+  justify-items:center;
+  line-height:1.13;
+  gap:3px;
+  padding:4px 2px;
+  border-radius:7px;
+  touch-action:manipulation;
+}
+.wager-key small {
+  font-size:.76rem;
+  font-variant-numeric:tabular-nums;
+  color:inherit;
+  white-space:nowrap;
+}
+#raise-max.wager-key::before {display:none;}
+.wager-key[aria-pressed=true] {
+  outline:2px solid #f2d58d;
+  outline-offset:-2px;
+}
+.wager-key:disabled {opacity:.52;}
+.wager-limits {flex-wrap:wrap;}
+@media(min-width:1120px) {
+  .wager-presets {grid-template-columns:repeat(8,minmax(0,1fr));}
+}

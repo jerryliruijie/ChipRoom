@@ -1,4 +1,5 @@
 import { createRoom, apply, view } from './engine.mjs';
+import { roomRoute, formatCode, randomRoomNumber, noRoomCodes } from './room-codes.mjs';
 
 class RequestError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -7,10 +8,6 @@ function checked(fn) {
   try { return fn(); } catch (e) { throw new RequestError(400,e.message); }
 }
 const reply = (value,status=200) => Response.json(value,{status,headers:{'cache-control':'no-store','x-content-type-options':'nosniff'}});
-const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-function makeCode() {
-  return Array.from(crypto.getRandomValues(new Uint8Array(6)), n => alphabet[n % alphabet.length]).join('');
-}
 async function digest(token) {
   const bytes = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token));
   return Array.from(new Uint8Array(bytes), n => n.toString(16).padStart(2,'0')).join('');
@@ -32,9 +29,10 @@ export default {
 async function handleRequest(request,env) {
     try {
       const path = new URL(request.url).pathname;
-      const route = /^\/api\/rooms(?:\/([A-Z2-9]{6})(?:\/(join|action))?)?$/i.exec(path);
+      const route = roomRoute.exec(path);
       if (!route) {
-        const asset = Object.hasOwn(assets,path === '/' ? '/index.html' : path) && assets[path === '/' ? '/index.html' : path];
+        const assetPath = path === '/' ? '/index.html' : path;
+        const asset = typeof assets !== 'undefined' && Object.hasOwn(assets,assetPath) && assets[assetPath];
         if (!asset) throw new RequestError(404,'找不到此页面。');
         if (!['GET','HEAD'].includes(request.method)) throw new RequestError(405,'请求方式有误。');
         return new Response(request.method==='HEAD'?null:asset[1],{headers:{'content-type':asset[0]+'; charset=utf-8','cache-control':'no-cache','x-content-type-options':'nosniff','referrer-policy':'same-origin'}});
@@ -78,12 +76,29 @@ async function handleRequest(request,env) {
         if (!code) {
           const room=checked(()=>createRoom(id,body.name));
           room.listedAt=Date.now();
-          for(let i=0;i<5;i++) {
-            const candidate=makeCode();
-            const r=await db.prepare('INSERT OR IGNORE INTO rooms(code,version,room,sessions) VALUES (?,1,?,?)').bind(candidate,JSON.stringify(room),JSON.stringify({[key]:id})).run();
-            if(r.meta.changes) return reply({code:candidate,token,state:state(room,id,1)},201);
+          const first = formatCode(randomRoomNumber());
+          const payload = JSON.stringify(room), sessions = JSON.stringify({[key]:id});
+          const insert = await db.prepare('INSERT INTO rooms(code,version,room,sessions) VALUES (?,1,?,?) ON CONFLICT(code) DO NOTHING')
+            .bind(first,payload,sessions).run();
+          let assigned = first;
+          if (!insert.meta.changes) {
+            // Every free range begins at 0000 or immediately after an occupied code.
+            // Find and claim its first slot within a single SQLite write statement.
+            const row = await db.prepare(`WITH candidates(candidate) AS (
+              SELECT '0000'
+              UNION ALL
+              SELECT printf('%04d', CAST(code AS INTEGER)+1) FROM rooms
+              WHERE code GLOB '[0-9][0-9][0-9][0-9]' AND code < '9999'
+            )
+            INSERT INTO rooms(code,version,room,sessions)
+            SELECT candidate,1,?,? FROM candidates
+            WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE code=candidate)
+            ORDER BY candidate < ?, candidate LIMIT 1
+            RETURNING code`).bind(payload,sessions,first).first();
+            if (!row) throw new RequestError(503,noRoomCodes);
+            assigned = row.code;
           }
-          throw new RequestError(503,'请重试创建房间。');
+          return reply({code:assigned,token,state:state(room,id,1)},201);
         }
         for(let i=0;i<8;i++) {
           const row=await db.prepare('SELECT * FROM rooms WHERE code=?').bind(code).first();

@@ -470,13 +470,16 @@ summary[data-pressed],.winner[data-pressed],select[data-pressed] {
   #stage-label {padding-left:10px; font-size:.79rem;}
   .desk-column {margin-inline:calc(-1 * clamp(14px,4vw,28px));}
   .surface {border-radius:0;}
-  .arena { height:clamp(355px,calc(100svh - 240px),585px); min-height:calc(215px + var(--flank-rows)*71px); }
-  .table-page[data-phase=betting][data-practice=false] .arena {
-    min-height:245px;
-    height:clamp(245px,calc(100dvh - var(--arena-page-top,125px) - var(--dock-height,110px) - var(--ime) - 15px),680px);
-  }
-  .table-page[data-practice=true] .arena { height:clamp(310px,calc(100svh - var(--dock-height,108px) - 125px),720px); }
-  .console {border-radius:0;}
+  /* A landscape table in portrait orientation. The operations below own their height. */
+  .arena {width:100%;height:auto;min-height:0;aspect-ratio:1.55;max-height:440px;}
+  .table-page[data-dense=true] .arena {aspect-ratio:1.42;min-height:253px;}
+  .table-page[data-dense=true] .pot strong {font-size:clamp(1.55rem,5.7vw,2.3rem);}
+  .table-page[data-dense=true] .pot strong.long-number {font-size:clamp(.9rem,3.2vw,1.28rem);}
+  .table-page[data-dense=true] .seat.is-current {border-color:#a2ebbd;}
+  .table-page[data-dense=true] .turn-tag {top:2px;bottom:auto;left:-4px;padding:0;font-size:0;line-height:1;background:#153125;}
+  .table-page[data-dense=true] .turn-tag i {width:5px;height:5px;vertical-align:middle;margin:0;}
+  .table-page:not([data-dense=true]) .seat.is-mine .turn-tag {top:50%;left:calc(100% + 2px);translate:0 -50%;}
+  .console {position:relative;border-radius:0;}
   .sidebar {padding-inline:12px;}
   .mast-actions {gap:7px;}
   .mast-actions button {padding-inline:12px; font-size:.87rem;}
@@ -488,11 +491,10 @@ summary[data-pressed],.winner[data-pressed],select[data-pressed] {
   .sidebar { margin-block:3px 12px; }
   .fields { grid-template-columns:1.4fr 1fr 1fr; }
   .fields label:first-child { grid-column:auto; }
-  .table-page[data-phase=betting] { padding-bottom:calc(var(--dock-height,110px) + 18px); }
+  .table-page {padding-bottom:max(24px,var(--ime),env(safe-area-inset-bottom));}
   .table-page[data-phase=betting] .console {
-    position:fixed; z-index:5; inset:auto 0 var(--ime) 0; margin:0; max-height:68dvh; overflow:auto;
-    padding:12px max(16px,calc((100vw - 560px) / 2)) max(13px,env(safe-area-inset-bottom));
-    border:0; border-top:1px solid #918562; box-shadow:0 -5px 24px #06120c66;
+    padding:13px max(16px,calc((100vw - 560px) / 2)) 16px;
+    border:0;border-top:1px solid #918562;box-shadow:inset 0 1px #f4e9c018;
   }
   dialog { width:min(100%,480px); max-width:100%; max-height:88dvh; margin:auto auto 0; padding:18px 22px max(23px,env(safe-area-inset-bottom)); border-radius:16px 16px 0 0; }
 }

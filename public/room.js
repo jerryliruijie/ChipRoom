@@ -1,8 +1,8 @@
-import { seatPoint } from './seat-layout.js';
+import { seatPoint, chipPoints } from './seat-layout.js';
+import { presetAmountLabel, wagerPresets } from './wager-presets.js';
 import { committedAllIn, markAllInSeat, mountAllInFeedback } from './all-in.js';
 import { num, reconcile, reducedMotion, template, text } from './ui.js';
-
-const streets = {preflop:'翻牌前',flop:'翻牌圈',turn:'转牌圈',river:'河牌圈'};
+import { mountStageNotice } from './stage-notice.js';
 
 function amount(node, value, animate) {
   const label = num(value);
@@ -30,9 +30,12 @@ export function mountTable(main,code,act,notify) {
   const $ = selector => root.querySelector(selector);
   const seatList = $('#seats'), roster = $('#roster'), arena = $('.arena');
   const allInFeedback = mountAllInFeedback(arena,seatList);
+  const stageNotice = mountStageNotice(root);
   const dock = $('#console'), settings = $('#settings'), raise = $('#raise'), award = $('#award');
   const amountInput = $('#raise-to'), slider = $('.raise-slider'), confirm = $('#raise-confirm');
+  const compact = matchMedia('(max-width:780px)');
   let state, pending = false, raiseKey = '';
+  let presets = [], selectedPreset = '';
   let scene = null, destroyed = false;
   const layer = $('#scene-layer'), props = $('.fallback-props'), wagers = $('#wager-labels');
   root.dataset.scene = 'loading';
@@ -69,10 +72,9 @@ export function mountTable(main,code,act,notify) {
       group.innerHTML = '<i class="bank-chip"></i><i class="wager-chip"></i>';
       return group;
     },(node,p,i)=>{
-      const [x,y] = seatPoint((i-mine+count)%count,count);
+      const {bank:[bx,by],wager:[wx,wy]} = chipPoints((i-mine+count)%count,count,
+        arena.clientWidth,arena.clientHeight,compact.matches);
       const bank = node.firstElementChild, wager = node.lastElementChild;
-      const point = fraction => [x+(50-x)*fraction,y+(50-y)*fraction];
-      const [bx,by] = point(.29), wx = 50+(x-50)*.50, wy = 50+(y-50)*.52;
       bank.style.left = bx+'%'; bank.style.top = by+'%'; bank.hidden = !p.stack;
       wager.style.left = wx+'%'; wager.style.top = wy+'%'; wager.hidden = !p.bet;
       const old = previous?.players.find(player => player.id === p.id);
@@ -92,15 +94,14 @@ export function mountTable(main,code,act,notify) {
     const keyboard = view && Math.abs(view.scale - 1) < .05
       ? Math.max(0,window.innerHeight-view.height-view.offsetTop) : 0;
     root.style.setProperty('--ime', Math.round(keyboard)+'px');
-    root.style.setProperty('--dock-height',dock.offsetHeight+'px');
-    // Document coordinates stay stable when someone scrolls down to the roster.
-    const top = arena.getBoundingClientRect().top + window.scrollY;
-    root.style.setProperty('--arena-page-top',Math.ceil(top)+'px');
   }
-  const observer = new ResizeObserver(measure);
-  observer.observe(dock);
-  observer.observe($('.table-title'));
-  observer.observe(document.querySelector('.topbar'));
+  // Resizing the canvas reprojects the 3D piles; keep DOM seats and silhouettes aligned.
+  const observer = new ResizeObserver(() => {
+    if (!state || destroyed) return;
+    players(state,false);
+    fallbackChips(null,false);
+  });
+  observer.observe(arena);
   window.visualViewport?.addEventListener('resize',measure);
   window.visualViewport?.addEventListener('scroll',measure);
 
@@ -113,7 +114,7 @@ export function mountTable(main,code,act,notify) {
     root.dataset.dense = String(count >= 7);
     root.dataset.count = String(count);
     reconcile(seatList,state.players,p=>p.id,()=>template('seat-template'),(node,p,index)=>{
-      const [x,y] = seatPoint((index-mine+count)%count,count);
+      const [x,y] = seatPoint((index-mine+count)%count,count,compact.matches);
       node.style.setProperty('--x',x+'%');
       node.style.setProperty('--y',y+'%');
       const current = p.id === state.turn;
@@ -135,7 +136,7 @@ export function mountTable(main,code,act,notify) {
       text(node.querySelector('.role'),[p.id===state.me && p.name!=='你'?'我':'',condition].filter(Boolean).join('·'));
     });
     reconcile(wagers,state.players,p=>p.id,()=>document.createElement('span'),(label,p,index)=>{
-      const [sx,sy] = seatPoint((index-mine+count)%count,count);
+      const [sx,sy] = seatPoint((index-mine+count)%count,count,compact.matches);
       label.style.left = (50+(sx-50)*.50)+'%';
       label.style.top = (50+(sy-50)*.52)+'%';
       label.dataset.side = sx<45 ? 'left' : sx>55 ? 'right' : 'middle';
@@ -181,15 +182,23 @@ export function mountTable(main,code,act,notify) {
     $('#bet-buttons').hidden = open;
     $('#raise-open').setAttribute('aria-expanded',String(open));
     dock.classList.toggle('editing',open);
+    if (open) {
+      amountInput.value = slider.value = slider.min;
+      selectedPreset = '';
+      paint();
+    }
   }
   function paint() {
     const min = Number(slider.min), max = Number(slider.max);
     const progress = max===min ? 100 : (Number(slider.value)-min)*100/(max-min);
     slider.style.setProperty('--progress',progress+'%');
-    const valid = amountInput.validity.valid && amountInput.value !== '';
+    const a = state.actions;
+    const value = amountInput.valueAsNumber;
+    const valid = a?.raise && Number.isSafeInteger(value) && amountInput.validity.valid &&
+      value >= a.minRaiseTo && value <= a.maxRaiseTo;
     confirm.disabled = pending || !valid;
+    amountInput.disabled = slider.disabled = pending;
     for (const step of raise.querySelectorAll('[data-step]')) {
-      const value = amountInput.valueAsNumber;
       step.disabled = pending || (step.dataset.step === 'down' ? value <= min : value >= max);
     }
     const opening = state.actions?.wagerKind === 'bet';
@@ -197,7 +206,14 @@ export function mountTable(main,code,act,notify) {
     text(confirm,valid ? (allIn ? '确认全下 ' : opening ? '下注 ' : '加注到 ')+num(amountInput.valueAsNumber)
       : opening ? '确认下注' : '确认加注');
     confirm.dataset.allin = String(allIn);
-    $('#raise-max')?.setAttribute('aria-pressed',String(allIn));
+    // Natural coincidences (e.g. half-pot = 3 BB) still represent one draft.
+    // Prefer the button the player chose, or a single match for manual entry.
+    const matchedPreset = selectedPreset || (allIn ? 'max' : presets.find(p=>p.enabled && p.to===value)?.id);
+    for (const button of raise.querySelectorAll('[data-preset]')) {
+      const preset = presets.find(item => item.id === button.dataset.preset);
+      button.disabled = pending || !preset.enabled;
+      button.setAttribute('aria-pressed',String(valid && preset.enabled && preset.to===value && matchedPreset===preset.id));
+    }
   }
   function actions(previous) {
     const {phase,actions:a} = state;
@@ -211,7 +227,7 @@ export function mountTable(main,code,act,notify) {
       for (const button of root.querySelectorAll('[data-scenario]')) button.hidden = state.scenario === button.dataset.scenario;
     }
     award.hidden = phase!=='showdown' || !host;
-    const key = a ? [state.hand,state.street,state.turn,a.minRaiseTo,a.maxRaiseTo].join('/') : '';
+    const key = a ? [state.hand,state.street,state.turn,state.pot,a.toCall ?? a.call,a.minRaiseTo,a.maxRaiseTo].join('/') : '';
     if (raiseKey !== key || !a?.raise) changeRaise(false);
     if (a) {
       const match=$('#match');
@@ -230,13 +246,31 @@ export function mountTable(main,code,act,notify) {
       slider.setAttribute('aria-label',opening ? '调整下注金额' : '调整本轮加注总额');
       if ($('[data-wager-label]')) text($('[data-wager-label]'),opening ? '下注' : '加注到');
       if (a.raise && key !== raiseKey) {
+        presets = wagerPresets(state);
+        selectedPreset = '';
+        reconcile($('.wager-presets'),presets,item=>item.id,()=>{
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'outline wager-key';
+          button.append(document.createElement('span'),document.createElement('small'));
+          return button;
+        },(button,preset)=>{
+          button.dataset.preset = preset.id;
+          if (preset.id==='max') button.id = 'raise-max';
+          text(button.firstElementChild,preset.label);
+          text(button.lastElementChild,presetAmountLabel(preset.to));
+          let hint = preset.label+' · 本轮总额 '+num(preset.to);
+          if (!preset.enabled) hint += preset.to<a.minRaiseTo ? '，低于最低下注总额' : '，超过可用筹码';
+          button.setAttribute('aria-label',hint);
+          button.title = hint;
+        });
         for (const field of [amountInput,slider]) {
           field.min = a.minRaiseTo;
           field.max = a.maxRaiseTo;
           field.value = a.minRaiseTo;
         }
         const limits = $('.limits').children;
-        text(limits[0],num(a.minRaiseTo)); text(limits[1],num(a.maxRaiseTo));
+        text(limits[0],'最低 '+num(a.minRaiseTo)); text(limits[1],'最高 '+num(a.maxRaiseTo));
         paint();
       }
     }
@@ -290,8 +324,11 @@ export function mountTable(main,code,act,notify) {
     if (button.id==='raise-open') {
       changeRaise(true);
       slider.focus({preventScroll:true});
-    } else if (button.id==='raise-max') {
-      amountInput.value = slider.value = slider.max;
+    } else if (button.dataset.preset && !raise.hidden) {
+      const preset = presets.find(item=>item.id===button.dataset.preset);
+      if (!preset?.enabled || button.disabled) return;
+      selectedPreset = preset.id;
+      amountInput.value = slider.value = String(preset.to);
       paint();
     } else if (button.id==='raise-cancel') {
       changeRaise(false);
@@ -318,14 +355,22 @@ export function mountTable(main,code,act,notify) {
     if (winners.some(ids=>!ids.length)) { notify('请为每个底池选择赢家，可多选'); return; }
     void act({type:'award',winners});
   });
-  slider.addEventListener('input',()=>{ amountInput.value=slider.value; paint(); });
+  slider.addEventListener('input',()=>{ selectedPreset=''; amountInput.value=slider.value; paint(); });
   amountInput.addEventListener('input',()=>{
+    selectedPreset='';
     if (amountInput.validity.valid) slider.value=amountInput.value;
     paint();
   });
+  amountInput.addEventListener('keydown',event=>{
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (!confirm.disabled) confirm.focus({preventScroll:true});
+    }
+  });
   raise.addEventListener('submit',event=>{
     event.preventDefault();
-    if (state.actions?.raise && !raise.hidden) void act({type:'raise',to:amountInput.valueAsNumber});
+    if (event.submitter===confirm && !pending && !confirm.disabled && !raise.hidden &&
+        state.actions?.raise && amountInput.reportValidity()) void act({type:'raise',to:amountInput.valueAsNumber});
   });
 
   return {
@@ -335,7 +380,7 @@ export function mountTable(main,code,act,notify) {
       root.dataset.phase=state.phase;
       root.dataset.practice=String(!!state.practice);
       text($('#table-title'),lobby ? '房间准备' : '第 '+state.hand+' 手');
-      text($('#stage-label'),lobby ? '准备入座' : state.phase==='complete' ? '本手结束' : state.phase==='showdown' ? '摊牌' : streets[state.street]);
+      stageNotice.update(next,!previous);
       text($('#blind-amount'),num(state.settings.sb)+' / '+num(state.settings.bb));
       text($('#pot-label'),lobby ? '已入座' : '总底池');
       $('.fallback-pot').hidden = lobby || !state.pot;
@@ -367,6 +412,7 @@ export function mountTable(main,code,act,notify) {
     destroy() {
       destroyed=true;
       allInFeedback.destroy();
+      stageNotice.destroy();
       clearTimeout(loadDeadline);
       watchScene.disconnect();
       releaseScene();

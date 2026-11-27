@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -34,6 +34,7 @@ test('independent devices share seats and actions, reject stale writes, and reco
   await start();
   const { data: host, status: created } = await request('/api/rooms', { name: '房主' });
   assert.equal(created, 201);
+  assert.match(host.code,/^\d{4}$/);
   const path = '/api/rooms/' + host.code;
   const { data: guest, status: joined } = await request(path + '/join', { name: '朋友' });
   assert.equal(joined, 201);
@@ -57,5 +58,39 @@ test('independent devices share seats and actions, reject stale writes, and reco
   assert.deepEqual((await request(path, undefined, guest.token)).data, beforeRestart.data);
   assert.equal((await act(host.token, 3, { type: 'fold' })).status, 200);
   assert.equal((await request(path, undefined, guest.token)).data.version, 4);
+});
+
+test('本地前导零、同时撞号、已有六位邀请和凭证', async t => {
+  const dataDir=await mkdtemp(join(tmpdir(),'chip-room-codes-'));
+  const server=createServer({dataDir});
+  server.listen(0,'127.0.0.1');
+  await once(server,'listening');
+  t.after(async()=>{
+    await new Promise(resolve=>server.close(resolve));
+    await rm(dataDir,{recursive:true,force:true});
+  });
+  const random=crypto.getRandomValues.bind(crypto);
+  t.mock.method(crypto,'getRandomValues',buffer=>buffer instanceof Uint32Array ? buffer.fill(0) : random(buffer));
+  async function api(path='',body,token) {
+    return fetch('http://127.0.0.1:'+server.address().port+'/api/rooms'+path,{
+      method:body?'POST':'GET',headers:token?{authorization:'Bearer '+token}:{},body:body?JSON.stringify(body):undefined
+    });
+  }
+  const host=await (await api('',{name:'保留原桌'})).json();
+  assert.equal(host.code,'0000');
+  const created=await Promise.all(['甲','乙','丙'].map(async name=>(await api('',{name})).json()));
+  assert.deepEqual(created.map(r=>r.code).sort(),['0001','0002','0003']);
+  assert.equal((await api('/0000',null,'0000')).status,401);
+  assert.equal((await api('/0000',null,created[0].token)).status,401);
+  for (const old of ['A2BC9Q','002301']) {
+    await copyFile(join(dataDir,'0000.json'),join(dataDir,old+'.json'));
+    assert.deepEqual(await (await api('/'+old.toLowerCase(),null,host.token)).json(),host.state);
+    const listed=await (await api()).json();
+    assert.ok(listed.rooms.some(room=>room.code===old));
+    assert.equal((await api('/'+old+'/join',{name:'重聚'})).status,201);
+    assert.equal((await api('/'+old+'/action',{version:2,cmd:{type:'start'}},host.token)).status,200);
+  }
+  assert.deepEqual(await (await api('/0000',null,host.token)).json(),host.state);
+  assert.equal((await api('/00000')).status,404);
 });
 

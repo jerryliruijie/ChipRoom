@@ -8,6 +8,8 @@
   <link rel="preload" href="./fonts/body.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./all-in.css">
+  <link rel="stylesheet" href="./wager-presets.css">
+  <link rel="stylesheet" href="./session.css">
   <script type="module" src="./controls.js"></script>
   <script type="module" src="./app.js"></script>
 </head>
@@ -36,6 +38,11 @@
         </div>
         <div class="mast-art" aria-hidden="true"><div class="engraving"></div><div class="jewel"><img src="./chips.webp" alt="" decoding="async"></div></div>
       </div>
+      <section id="saved-section" aria-labelledby="saved-heading" hidden>
+        <h2 id="saved-heading">我的牌桌</h2>
+        <div id="saved-latest"></div>
+        <details id="saved-others" hidden><summary>其他已入座的牌桌</summary><div id="saved-list"></div></details>
+      </section>
       <section class="directory" aria-labelledby="rooms-title">
         <div class="section-heading"><h2 id="rooms-title">开放牌桌 <span class="count" id="room-count">—</span></h2>
           <button class="quiet refresh" id="refresh">刷新</button></div>
@@ -43,6 +50,9 @@
         <div id="room-list"></div><p id="list-message" class="empty" role="status">正在查找牌桌…</p>
       </section>
     </section>
+  </template>
+  <template id="saved-seat-template">
+    <button class="resume-row" type="button"><span class="resume-info"><strong></strong><small></small></span><span class="room-code digits"></span><span class="resume-action">回到牌桌 <i aria-hidden="true">↗</i></span></button>
   </template>
   <template id="room-row-template">
     <button type="button" class="room-row">
@@ -56,7 +66,7 @@
     <p class="entry-context" id="entry-context" hidden></p>
     <form id="entry-form">
       <label>昵称<input name="name" autocomplete="nickname" maxlength="20" required placeholder="输入你的昵称"></label>
-      <label id="code-field">房间码<input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="6 位房间码"></label>
+      <div id="code-field"><label>房间码<input name="code" type="text" inputmode="numeric" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" placeholder="4 位数字"></label><button class="code-mode" id="code-mode" type="button">输入旧房间码</button></div>
       <p id="entry-error" class="error" role="alert"></p>
       <button id="enter" class="primary wide"></button>
     </form>
@@ -64,9 +74,10 @@
 
   <template id="table-template">
     <div class="table-page">
+      <div class="stage-notice" role="status" aria-live="polite" aria-atomic="true" hidden><i aria-hidden="true"></i><div><strong></strong><small></small></div></div>
       <div class="table-title">
         <div class="table-identity"><h1 id="table-title"></h1><span id="stage-label"></span></div>
-        <div class="table-meta"><span class="code-plate digits" id="table-code"></span><div class="blind-line">盲注 <b id="blind-amount" class="digits"></b></div></div>
+        <div class="table-meta"><button type="button" class="code-plate digits" id="table-code" title="复制房间码" aria-label="复制房间码"></button><div class="blind-line">盲注 <b id="blind-amount" class="digits"></b></div></div>
       </div>
       <div class="workspace">
         <div class="desk-column">
@@ -98,15 +109,15 @@
                 <button id="raise-open" class="gold-outline" aria-controls="raise" aria-expanded="false">加注</button>
               </div>
               <form id="raise" hidden>
-                <div class="amount-line"><label for="raise-to"><span data-wager-label>加注到</span><small>本轮总额</small></label>
-                  <button type="button" id="raise-max" class="max-key">全下</button></div>
+                <div class="amount-line"><label for="raise-to"><span data-wager-label>加注到</span><small>本轮总额</small></label></div>
                 <div class="stepper">
                   <button type="button" class="step-key" data-step="down" aria-label="减少一个筹码">−</button>
                   <input id="raise-to" name="to" type="number" inputmode="numeric" step="1" required>
                   <button type="button" class="step-key" data-step="up" aria-label="增加一个筹码">+</button>
                 </div>
                 <input class="raise-slider" type="range" aria-label="调整加注总额" step="1">
-                <div class="limits digits"><span></span><span></span></div>
+                <div class="limits digits wager-limits"><span></span><span></span></div>
+                <div class="wager-presets" role="group" aria-label="选择本轮下注总额"></div>
                 <div class="raise-buttons"><button type="button" class="outline" id="raise-cancel">取消</button><button class="primary" id="raise-confirm">确认加注</button></div>
               </form>
             </div>

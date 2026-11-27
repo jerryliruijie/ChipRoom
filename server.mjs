@@ -1,14 +1,14 @@
 import { createServer as httpServer } from 'node:http';
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { linkSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 import { createRoom, apply, view } from './engine.mjs';
 import { publicFiles } from './scripts/public-files.mjs';
+import { roomRoute, roomFile, codeCapacity, formatCode, randomRoomNumber, noRoomCodes } from './room-codes.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const assets = publicFiles(join(root, 'public'));
 const hash = token => createHash('sha256').update(token).digest('hex');
 const fail = (status, message) => Object.assign(new Error(message), { status });
@@ -63,6 +63,31 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
     renameSync(temporary, target);
     rooms.set(code, record);
   }
+  function createRecord(record) {
+    const first = randomRoomNumber();
+    const temporary = join(dataDir, randomUUID() + '.tmp');
+    writeFileSync(temporary, JSON.stringify(record), { mode: 0o600, flush: true });
+    let occupied;
+    try {
+      for (let offset = 0; offset < codeCapacity; offset++) {
+        const code = formatCode((first + offset) % codeCapacity);
+        const filename = code + '.json';
+        if (occupied?.has(filename)) continue;
+        try {
+          // Publish a complete file exclusively, even if another creator wins the same code.
+          linkSync(temporary, join(dataDir, filename));
+          rooms.set(code, record);
+          return code;
+        } catch (error) {
+          if (error.code !== 'EEXIST') throw error;
+          occupied ??= new Set(readdirSync(dataDir));
+        }
+      }
+      throw fail(503, noRoomCodes);
+    } finally {
+      unlinkSync(temporary);
+    }
+  }
   return httpServer(async (request, response) => {
     response.setHeader('x-content-type-options', 'nosniff');
     try {
@@ -75,13 +100,13 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
         response.end(request.method === 'HEAD' ? undefined : data);
         return;
       }
-      const route = /^\/api\/rooms(?:\/([A-Z2-9]{6})(?:\/(join|action))?)?$/i.exec(path);
+      const route = roomRoute.exec(path);
       if (!route) throw fail(404, '找不到此页面。');
       let code = route[1]?.toUpperCase();
       const operation = route[2]?.toLowerCase();
       if (!code && request.method === 'GET') {
-        const entries = readdirSync(dataDir).filter(file => /^[A-Z2-9]{6}\.json$/.test(file)).map(file => {
-          const code=file.slice(0,6);
+        const entries = readdirSync(dataDir).filter(file => roomFile.test(file)).map(file => {
+          const code=file.slice(0,-5);
           return {code,room:load(code).room};
         }).filter(({room})=>room.phase==='lobby' && room.players.length<10 && room.listedAt>Date.now()-86400000);
         entries.sort((a,b)=>b.room.listedAt-a.room.listedAt);
@@ -104,13 +129,13 @@ export function createServer({ dataDir = join(root, 'data') } = {}) {
           checked(() => apply(record.room, id, { type: 'join', name: body.name }));
           record.room.version++;
         } else {
-          do { code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join(''); } while (load(code));
           record = { room: checked(() => createRoom(id, body.name)), sessions: {} };
           record.room.version = 1;
           record.room.listedAt = Date.now();
         }
         record.sessions[hash(token)] = id;
-        save(code, record);
+        if (code) save(code, record);
+        else code = createRecord(record);
         json(response, 201, { code, token, state: snapshot(record.room, id) });
         return;
       }

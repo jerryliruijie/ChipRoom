@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.js';
-import { seatPoint } from './seat-layout.js';
+import { chipPoints } from './seat-layout.js';
 
 const TAU = Math.PI * 2;
 const POT = 'pot';
@@ -360,6 +360,7 @@ export function createTableScene(container) {
     return ray.ray.intersectPlane(plane,new THREE.Vector3());
   }
 
+  const compact=matchMedia('(max-width:780px)');
   let width=0,height=0,ratio=0,radius=.18,snapshot=null;
   let stock=new Map(), anchors=new Map(), timeline=null,blindDenom=1;
   let frame=0,lost=false,disposed=false;
@@ -440,22 +441,9 @@ export function createTableScene(container) {
     const total=snapshot.players.length;
     snapshot.players.forEach((p,i)=>{
       const relative=(i-mine+total)%total;
-      const [sx,sy]=seatPoint(relative,total);
-      let bx,by;
-      if (Math.abs(sx-50)<1) {
-        // A bank beside the top/bottom plaque stays visible behind the owner's bet.
-        bx=50+(sy>50?-1:1)*Math.min(21,8100/width);
-        by=50+(sy-50)*.73;
-      } else if(total===3) {
-        bx=sx; by=sy+Math.min(16,5200/height);
-      } else {
-        const dx=50-sx,dy=50-sy;
-        const pixelDistance=Math.hypot(dx*width/100,dy*height/100);
-        const fraction=Math.min(.53,Math.max(.31,52/pixelDistance));
-        bx=sx+dx*fraction; by=sy+dy*fraction;
-      }
+      const {bank:[bx,by],wager:[wx,wy]} = chipPoints(relative,total,width,height,compact.matches);
       anchors.set(bank(p.id),toWorld(bx,by));
-      anchors.set(wager(p.id),toWorld(50+(sx-50)*.50,50+(sy-50)*.52));
+      anchors.set(wager(p.id),toWorld(wx,wy));
     });
   }
   function size() {
@@ -465,7 +453,7 @@ export function createTableScene(container) {
     width=w; height=h; ratio=dpr;
     renderer.setPixelRatio(dpr); renderer.setSize(w,h,false);
     camera.aspect=w/h; camera.updateProjectionMatrix();
-    const diameter=clamp(17,Math.min(w*.066,h*.079),34);
+    const diameter=compact.matches ? clamp(16,Math.min(w*.061,h*.076),34) : clamp(17,Math.min(w*.066,h*.079),34);
     radius=toWorld(50+diameter*50/w,50).distanceTo(toWorld(50,50));
     buildTable(); setAnchors();
   }
@@ -475,7 +463,7 @@ export function createTableScene(container) {
   const countCoins= stack=>stack.reduce((n,line)=>n+line.count,0);
   function offset(point,key,column) {
     if(key.startsWith('bet/')) return point.clone();
-    const scale=snapshot.players.length>=7?.87:1;
+    const scale = snapshot.players.length >= 7 ? (compact.matches ? .68 : .87) : 1;
     const toward=key===POT?1:point.x<0?1:-1;
     const x=[1.10,-1.08,-.05][column]*toward*scale;
     const z=[.33,.20,-1.68][column]*scale;

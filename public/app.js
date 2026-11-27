@@ -1,6 +1,7 @@
 import { mountLobbyArt, num, reconcile, reducedMotion, template, text } from './ui.js';
 import { mountTable } from './room.js';
 import { createPractice, scenarios } from './practice.js';
+import { savedSession, savedSeats, rememberSeat, forgetSeat, validRoomCode } from './saved-seats.js';
 
 const main = document.getElementById('main');
 const connection = document.getElementById('connection');
@@ -14,20 +15,12 @@ const endpoint = location.origin === 'https://jerryliruijie.github.io'
 let session, state, table, entry, transitionOrigin, noticeTimer, practice;
 let busy = false, syncing = false, listing = false;
 let directory = new Map();
-const cleanCode = value => value.trim().toUpperCase();
-const savedKey = code => 'chip-room-session-' + code;
+const cleanCode = value => value.trim().normalize('NFKC').toUpperCase();
 function remembered(storage, key) {
   try { return window[storage].getItem(key); } catch { return null; }
 }
 function remember(storage, key, value) {
   try { window[storage].setItem(key, value); } catch { /* Device storage is optional. */ }
-}
-function savedSession(code) {
-  try {
-    const key = savedKey(code);
-    const saved = JSON.parse(remembered('sessionStorage', key) || remembered('localStorage', key));
-    return saved?.code === code && saved.token ? saved : null;
-  } catch { return null; }
 }
 function locationFor(code) {
   const url = new URL(location.href);
@@ -69,8 +62,44 @@ function showLobby() {
   text(navAction, '凭码加入');
   main.replaceChildren(template('lobby-template'));
   mountLobbyArt(main.querySelector('.mast-art'));
+  refreshSaved();
   document.title = '牌桌大厅 · 同桌';
   void refreshDirectory();
+}
+function refreshSaved() {
+  const section = document.getElementById('saved-section');
+  if (!section) return;
+  const seats = savedSeats();
+  section.hidden = !seats.length;
+  document.getElementById('saved-others').hidden = seats.length < 2;
+  function draw(container,items) {
+    reconcile(container,items,seat=>seat.code,()=>template('saved-seat-template'),(node,seat)=>{
+      node.dataset.resume = seat.code;
+      text(node.querySelector('strong'),seat.host ? seat.host+' 的桌' : '房间 '+seat.code);
+      text(node.querySelector('small'),[seat.name,seat.isHost?'房主':''].filter(Boolean).join(' · '));
+      text(node.querySelector('.room-code'),seat.code);
+      node.setAttribute('aria-label','回到牌桌 '+seat.code);
+    });
+  }
+  draw(document.getElementById('saved-latest'),seats.slice(0,1));
+  draw(document.getElementById('saved-list'),seats.slice(1));
+}
+async function resumeSeat(code,button) {
+  if (busy || session || dialog.open) return;
+  const seat = savedSession(code);
+  if (!seat) { refreshSaved(); openEntry('join',code,'',button); return; }
+  busy = true;
+  button.setAttribute('aria-busy','true');
+  try {
+    const snapshot = await request(endpoint+'/'+code,{auth:seat.token});
+    enterTable(seat,snapshot);
+  } catch (error) {
+    if ([401,403,404].includes(error.status)) {
+      forgetSeat(seat);
+      refreshSaved();
+      notify(error.status === 404 ? '这张牌桌已关闭' : '这个座位的凭证已失效，请重新加入');
+    } else notify(error.message);
+  } finally { busy = false; button.removeAttribute('aria-busy'); }
 }
 async function refreshDirectory() {
   const list = document.getElementById('room-list');
@@ -90,7 +119,9 @@ async function refreshDirectory() {
       text(row.querySelector('.occupancy span'), room.players + ' / 10');
       row.querySelector('.occupancy').style.setProperty('--filled', room.players * 10 + '%');
       text(row.querySelector('.blinds'), num(room.sb) + ' / ' + num(room.bb));
-      row.setAttribute('aria-label','加入' + room.host + '的桌，' + room.players + '人，房间 ' + room.code);
+      const seated = !!savedSession(room.code);
+      text(row.querySelector('.join-label'),seated?'回桌':'入座');
+      row.setAttribute('aria-label',(seated?'回到':'加入') + room.host + '的桌，' + room.players + '人，房间 ' + room.code);
     });
     text(document.getElementById('room-count'), rooms.length);
     message.hidden = rooms.length > 0;
@@ -117,6 +148,7 @@ function openEntry(kind, code = '', message = '', origin = null) {
   document.getElementById('code-field').hidden = creating || !!code;
   entryForm.elements.code.required = !creating && !code;
   entryForm.elements.code.value = code;
+  codeKeyboard(false);
   entryForm.elements.name.value = remembered('localStorage','chip-room-nickname') || '';
   text(document.getElementById('entry-error'),message);
   text(document.getElementById('enter'), creating ? '创建房间' : '加入牌桌');
@@ -124,11 +156,20 @@ function openEntry(kind, code = '', message = '', origin = null) {
   const input = !creating && !code && entryForm.elements.name.value ? entryForm.elements.code : entryForm.elements.name;
   input.focus({preventScroll:true});
 }
+function codeKeyboard(legacy) {
+  const input = entryForm.elements.code;
+  input.inputMode = legacy ? 'text' : 'numeric';
+  input.placeholder = legacy ? '6 位旧房间码' : '4 位数字';
+  const toggle = document.getElementById('code-mode');
+  text(toggle,legacy ? '输入新房间码' : '输入旧房间码');
+  toggle.setAttribute('aria-pressed',String(legacy));
+}
+document.getElementById('code-mode').addEventListener('click',()=>{
+  codeKeyboard(entryForm.elements.code.inputMode === 'numeric');
+  entryForm.elements.code.focus();
+});
 function enterTable(identity, snapshot) {
   session = identity;
-  const value = JSON.stringify(identity);
-  remember('sessionStorage', savedKey(identity.code), value);
-  remember('localStorage', savedKey(identity.code), value);
   if (dialog.open) dialog.close();
   history.replaceState(null,'',locationFor(identity.code));
   update(snapshot);
@@ -152,6 +193,7 @@ async function submitEntry(event) {
   const code = cleanCode(entry.code || entryForm.elements.code.value);
   const errorNode = document.getElementById('entry-error');
   if (!name) { text(errorNode,'请输入昵称'); return; }
+  if (entry.kind === 'join' && !validRoomCode(code)) { text(errorNode,'请输入 4 位数字或 6 位旧房间码'); return; }
   busy = true;
   const submit = document.getElementById('enter');
   submit.disabled = true;
@@ -164,7 +206,11 @@ async function submitEntry(event) {
         const snapshot = await request(endpoint + '/' + encodeURIComponent(code), {auth:saved.token});
         enterTable(saved,snapshot);
         return;
-      } catch (error) { if (![401,403,404].includes(error.status)) throw error; }
+      } catch (error) {
+        if (![401,403,404].includes(error.status)) throw error;
+        forgetSeat(saved);
+        refreshSaved();
+      }
     }
     const url = entry.kind === 'create' ? endpoint : endpoint + '/' + encodeURIComponent(code) + '/join';
     const data = await request(url,{body:{name}});
@@ -184,11 +230,15 @@ function update(next) {
   if (!table) {
     homeLink.hidden = navAction.hidden = false;
     const practice = next.practice === true;
+    if (!practice) rememberSeat(session,next);
     text(navAction,practice ? '创建房间' : '复制邀请');
     table = mountTable(main,practice ? '体验桌' : session.code,act,notify);
     document.title = (practice ? scenarios[next.scenario] : '房间 ' + session.code) + ' · 同桌';
     window.scrollTo(0,0);
     const plate = document.getElementById('table-code');
+    plate.disabled = practice;
+    if (practice) { plate.removeAttribute('title'); plate.setAttribute('aria-label','体验桌'); }
+    else plate.setAttribute('aria-label','复制房间码 '+session.code);
     if (transitionOrigin && !reducedMotion()) {
       const dest = plate.getBoundingClientRect();
       const clamp = v => Math.max(-100, Math.min(100,v));
@@ -208,8 +258,10 @@ async function sync() {
   } catch (error) {
     if (current !== session) return;
     if ([401,403,404].includes(error.status)) {
+      forgetSeat(current);
+      history.replaceState(null,'',locationFor());
       showLobby();
-      openEntry('join',current.code,error.message);
+      openEntry('join',error.status === 404 ? '' : current.code,error.message);
     } else {
       table?.interruptFeedback();
       text(connection,'正在重连');
@@ -262,7 +314,17 @@ navAction.addEventListener('click',async ()=>{
 main.addEventListener('click',event=>{
   const button = event.target.closest('button');
   if (!button) return;
-  if (button.dataset.room) openEntry('join',button.dataset.room,'',button);
+  if (button.dataset.resume) { void resumeSeat(button.dataset.resume,button); return; }
+  if (button.dataset.room) {
+    if (savedSession(button.dataset.room)) void resumeSeat(button.dataset.room,button);
+    else openEntry('join',button.dataset.room,'',button);
+  }
+  if (button.id === 'table-code' && session) {
+    const code = session.code;
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(code)
+      .then(()=>notify('房间码 '+code+' 已复制')).catch(()=>window.prompt('复制房间码',code));
+    else window.prompt('复制房间码',code);
+  }
   if (button.dataset.open === 'create') openEntry('create','','',button);
   if (button.dataset.open === 'practice') enterPractice();
   if (button.id === 'practice-again' && state?.practiceDone) enterPractice(state.scenario);
@@ -286,8 +348,14 @@ if (saved) {
   enterPractice(initialScenario);
 } else {
   showLobby();
-  if (initialCode) openEntry('join',initialCode);
+  if (initialCode) {
+    if (validRoomCode(initialCode)) openEntry('join',initialCode);
+    else openEntry('join','','房间码无效，请重新输入');
+  }
 }
+window.addEventListener('storage',event=>{
+  if (!event.key || event.key.startsWith('chip-room-session-')) refreshSaved();
+});
 setInterval(sync,1000);
 setInterval(refreshDirectory,4000);
 function reconnect() { if (session) void sync(); else void refreshDirectory(); }

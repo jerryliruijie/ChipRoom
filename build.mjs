@@ -9,9 +9,10 @@ for (const [url, {path, mime}] of publicFiles('public')) {
   entries.push(`${JSON.stringify(url)}:[${JSON.stringify(mime)},${source}]`);
 }
 const engine = await readFile('public/holdem.js','utf8');
-const handler = (await readFile('worker.mjs','utf8')).replace("import { createRoom, apply, view } from './engine.mjs';", '');
+const roomCodes = await readFile('room-codes.mjs','utf8');
+const handler = (await readFile('worker.mjs','utf8')).replace(/^import .* from '\.\/(?:engine|room-codes)\.mjs';\r?$/gm, '');
 await mkdir('dist/server',{recursive:true});
 await mkdir('dist/.openai',{recursive:true});
 await copyFile('.openai/hosting.json','dist/.openai/hosting.json');
-await writeFile('dist/server/index.js', 'const assets = {'+entries.join(',\n')+'};\n'+engine+'\n'+handler);
+await writeFile('dist/server/index.js', 'const assets = {'+entries.join(',\n')+'};\n'+engine+'\n'+roomCodes+'\n'+handler);
 
