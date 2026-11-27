@@ -22,10 +22,13 @@
   white-space:nowrap;
 }
 #raise-max.wager-key::before {display:none;}
-.wager-key[aria-pressed=true] {
-  outline:2px solid #f2d58d;
-  outline-offset:-2px;
+.wager-presets .wager-key[aria-pressed=true] {
+  color:#fff2ce;
+  border-color:#d6bb78;
+  background:linear-gradient(150deg,#55563b,#344637);
+  box-shadow:inset 0 0 0 1px #e0c78d,0 2px 0 #121d14;
 }
+.wager-presets .wager-key:focus-visible {outline:2px solid #ade7cd;outline-offset:2px;}
 .wager-key:disabled {opacity:.52;}
 .wager-limits {flex-wrap:wrap;}
 @media(min-width:1120px) {
